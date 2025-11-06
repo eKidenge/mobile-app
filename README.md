@@ -124,7 +124,7 @@ npx expo start
 
 ## Contact
 - Email: support@directconnect.co.ke
-- Phone: +254 700 123 456
+- Phone: +254 757 133220
 - Website: www.directconnect.co.ke
 
 © 2025 DirectConnect Kenya. All rights reserved.
