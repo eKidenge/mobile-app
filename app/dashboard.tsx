@@ -11,8 +11,8 @@ export default function Dashboard() {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.greeting}>Welcome back! 👋</Text>
-          <Text style={styles.title}>How can we help you today?</Text>
+          <Text style={styles.greeting}>DirectConnect 👋</Text>
+          <Text style={styles.title}>Skip the search, get the answer</Text>
         </View>
 
         <QuickCallButton />

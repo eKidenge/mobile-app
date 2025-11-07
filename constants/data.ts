@@ -5,7 +5,7 @@ export const categories = [
     icon: 'https://d64gsuwffb70l.cloudfront.net/68e0a341b0c4553af1164043_1759552389326_a6289665.webp',
     color: '#1E40AF',
     available: 12,
-    rate: 'KSH 120/min',
+	rate: 'KSH 200 per session',
     avgResponse: '2 min'
   },
   {
@@ -14,7 +14,7 @@ export const categories = [
     icon: 'https://d64gsuwffb70l.cloudfront.net/68e0a341b0c4553af1164043_1759552387945_8ec28e21.webp',
     color: '#059669',
     available: 8,
-    rate: 'KSH 100/min',
+	rate: 'KSH 200 per session',
     avgResponse: '3 min'
   },
   {
@@ -23,7 +23,7 @@ export const categories = [
     icon: 'https://d64gsuwffb70l.cloudfront.net/68e0a341b0c4553af1164043_1759552388643_9a51f414.webp',
     color: '#7C3AED',
     available: 15,
-    rate: 'KSH 80/min',
+	rate: 'KSH 200 per session',
     avgResponse: '1 min'
   },
   {
@@ -32,7 +32,7 @@ export const categories = [
     icon: 'https://d64gsuwffb70l.cloudfront.net/68e0a341b0c4553af1164043_1759552390450_b388d491.webp',
     color: '#DC2626',
     available: 10,
-    rate: 'KSH 120/min',
+    rate: 'KSH 200 per session',
     avgResponse: '2 min'
   }
 ];
@@ -40,7 +40,7 @@ export const categories = [
 export const professionals = [
   {
     id: '1',
-    name: 'Dr. Amina Wanjiru',
+    name: 'Dr. Otiende Amollo',
     category: 'legal',
     specialization: 'Family & Criminal Law',
     rating: 4.9,
@@ -52,7 +52,7 @@ export const professionals = [
   },
   {
     id: '2',
-    name: 'Dr. James Omondi',
+    name: 'Dr. James Nyikal',
     category: 'medical',
     specialization: 'General Practice',
     rating: 4.8,
@@ -64,7 +64,7 @@ export const professionals = [
   },
   {
     id: '3',
-    name: 'Dr. Grace Muthoni',
+    name: 'Dr. Evance Kidero',
     category: 'mental-health',
     specialization: 'Clinical Psychology',
     rating: 4.9,
@@ -76,7 +76,7 @@ export const professionals = [
   },
   {
     id: '4',
-    name: 'David Kamau',
+    name: 'Githu Muigai',
     category: 'career',
     specialization: 'Career Development',
     rating: 4.7,

@@ -9,7 +9,11 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 web-build/
-assets/
+# Ignore everything in assets except images
+assets/*
+!assets/images/
+!assets/images/**
+
 metro-cache/
 .metro-cache-*/
 
