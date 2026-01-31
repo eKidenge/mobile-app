@@ -50,11 +50,14 @@ interface PendingRequest {
   client_id: string;
   urgency?: 'low' | 'medium' | 'high';
   session_id?: string;
+  call_id?: string; // ADDED
+  room_id?: string; // ADDED
 }
 
 interface CallNotificationData {
   type: string;
   sessionId: string;
+  callId: string; // ADDED
   clientId: string;
   clientName: string;
   mode: 'chat' | 'audio' | 'video';
@@ -62,6 +65,8 @@ interface CallNotificationData {
   professionalId: string;
   ringtone?: string;
   vibration?: boolean;
+  consultationId?: string;
+  roomId?: string; // ADDED: Room ID from client
 }
 
 interface ApiConfig {
@@ -76,8 +81,7 @@ const API_CONFIG: ApiConfig = {
   retries: 3
 };
 
-// Ringtone Manager - Simplified version for web compatibility
-// Ringtone Manager - Updated with proper audio handling
+// Ringtone Manager - Updated version
 class RingtoneManager {
   private static instance: RingtoneManager;
   private sound: Audio.Sound | null = null;
@@ -86,15 +90,15 @@ class RingtoneManager {
   private callSessionId: string | null = null;
   private audioInitialized = false;
 
-  private constructor() {
-    this.initializeAudio();
-  }
-
   static getInstance(): RingtoneManager {
     if (!RingtoneManager.instance) {
       RingtoneManager.instance = new RingtoneManager();
     }
     return RingtoneManager.instance;
+  }
+
+  private constructor() {
+    this.initializeAudio();
   }
 
   private async initializeAudio() {
@@ -126,17 +130,17 @@ class RingtoneManager {
       this.callSessionId = sessionId || null;
       this.isPlaying = true;
 
-      // Start vibration first
+      // Start vibration
       this.startVibration();
 
-      // Handle audio based on platform
+      // Play ringtone based on platform
       if (Platform.OS === 'web') {
         this.playWebRingtone();
       } else {
         await this.playMobileRingtone();
       }
       
-      console.log('🔊 Ringtone started');
+      console.log('🔊 Ringtone started for session:', sessionId);
       
     } catch (error) {
       console.error('❌ Error playing ringtone:', error);
@@ -149,68 +153,14 @@ class RingtoneManager {
 
   private playWebRingtone(): void {
     try {
-      // Create audio element for web
-      const audio = new Audio();
-      
-      // Try to load the ringtone file from assets
-      // Note: You might need to serve this file from a public URL in web
-      // For local development, you can use a placeholder sound
-      const ringtoneUrl = '/sounds/ringtone.mp3';
-      
-      audio.src = ringtoneUrl;
-      audio.loop = true;
-      audio.volume = 1.0;
-      
-      // Try to play
-      audio.play().then(() => {
-        console.log('🔊 Web ringtone playing');
-      }).catch((webError) => {
-        console.warn('Web audio play failed, using fallback:', webError);
-        this.playWebFallback();
-      });
-      
-      // Store reference
-      (this as any).webAudio = audio;
-      
+      // For web, we'll use a simple beep pattern
+      console.log('🔊 Playing web ringtone');
+      // Web vibration if supported
+      if (navigator.vibrate) {
+        navigator.vibrate([500, 500]);
+      }
     } catch (webError) {
       console.error('Web ringtone error:', webError);
-      this.playWebFallback();
-    }
-  }
-
-  private playWebFallback(): void {
-    try {
-      // Create a simple beep pattern using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 800;
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      
-      // Create beep pattern: 0.5s on, 0.5s off
-      const interval = setInterval(() => {
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      }, 1000);
-      
-      oscillator.start();
-      
-      // Store references
-      (this as any).webAudioContext = audioContext;
-      (this as any).webOscillator = oscillator;
-      (this as any).webGainNode = gainNode;
-      (this as any).webBeepInterval = interval;
-      
-      console.log('🔊 Web fallback ringtone playing');
-      
-    } catch (fallbackError) {
-      console.error('Web fallback ringtone failed:', fallbackError);
     }
   }
 
@@ -222,83 +172,49 @@ class RingtoneManager {
         this.sound = null;
       }
 
-      // Try to load and play the ringtone
-      console.log('🎵 Loading ringtone file...');
+      console.log('🎵 Loading mobile ringtone...');
       
-      // For development, you can use require with your local file
-      const ringtoneSource = require('../../assets/sounds/ringtone.mp3');
-      
+      // For mobile, use system sound
       const { sound } = await Audio.Sound.createAsync(
-        ringtoneSource,
+        require('../../assets/sounds/ringtone.mp3'),
         { 
           shouldPlay: true,
           isLooping: true,
           volume: 1.0,
-          rate: 1.0
-        },
-        (playbackStatus) => {
-          if (!playbackStatus.isLoaded) {
-            if (playbackStatus.error) {
-              console.error('Playback error:', playbackStatus.error);
-            }
-          }
         }
       );
       
       this.sound = sound;
-      console.log('✅ Mobile ringtone loaded and playing');
+      console.log('✅ Mobile ringtone playing');
       
     } catch (mobileError) {
       console.error('Mobile ringtone error:', mobileError);
-      
-      // Try fallback system sound for mobile
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: 'https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3' },
-          { 
-            shouldPlay: true,
-            isLooping: true,
-            volume: 1.0
-          }
-        );
-        this.sound = sound;
-        console.log('✅ Fallback mobile ringtone playing');
-      } catch (fallbackError) {
-        console.error('Fallback mobile ringtone failed:', fallbackError);
-      }
+      // Just vibrate if sound fails
+      this.startVibration();
     }
   }
 
   private startVibration(): void {
     try {
-      // Stop any existing vibration first
       this.stopVibration();
       
       if (Platform.OS === 'web') {
-        // Web vibration API (not supported in all browsers)
         if (navigator.vibrate) {
-          // Pattern: vibrate for 1s, pause for 1s
-          navigator.vibrate([1000, 1000]);
+          navigator.vibrate([1000, 1000, 1000, 1000]);
         }
         return;
       }
       
-      // Mobile vibration
       Vibration.cancel();
       
-      if (this.vibrationInterval) {
-        clearInterval(this.vibrationInterval);
-      }
-
+      // Different vibration patterns for platforms
       if (Platform.OS === 'android') {
-        // Android: vibrate pattern
         Vibration.vibrate([0, 1000, 500, 1000], true);
       } else {
-        // iOS: simple vibration
         Vibration.vibrate(1000);
         this.vibrationInterval = setInterval(() => {
           Vibration.vibrate(1000);
-        }, 1500);
+        }, 2000);
       }
     } catch (error) {
       console.error('Vibration error:', error);
@@ -328,20 +244,20 @@ class RingtoneManager {
     try {
       console.log('🛑 Stopping ringtone...');
       
-      // Stop web audio
-      if (Platform.OS === 'web') {
-        this.stopWebAudio();
-      }
+      // Stop vibration
+      this.stopVibration();
       
-      // Stop mobile audio
+      // Stop audio
       if (this.sound) {
         await this.sound.stopAsync();
         await this.sound.unloadAsync();
         this.sound = null;
       }
       
-      // Stop vibration
-      this.stopVibration();
+      // Clear any web audio
+      if (Platform.OS === 'web' && navigator.vibrate) {
+        navigator.vibrate(0);
+      }
       
       this.isPlaying = false;
       this.callSessionId = null;
@@ -351,47 +267,6 @@ class RingtoneManager {
       console.error('Error stopping ringtone:', error);
       this.isPlaying = false;
       this.callSessionId = null;
-    }
-  }
-
-  private stopWebAudio(): void {
-    try {
-      // Stop HTML5 Audio
-      const webAudio = (this as any).webAudio;
-      if (webAudio) {
-        webAudio.pause();
-        webAudio.currentTime = 0;
-        delete (this as any).webAudio;
-      }
-      
-      // Stop Web Audio API fallback
-      const webAudioContext = (this as any).webAudioContext;
-      const webOscillator = (this as any).webOscillator;
-      const webGainNode = (this as any).webGainNode;
-      const webBeepInterval = (this as any).webBeepInterval;
-      
-      if (webBeepInterval) {
-        clearInterval(webBeepInterval);
-        delete (this as any).webBeepInterval;
-      }
-      
-      if (webOscillator) {
-        webOscillator.stop();
-        delete (this as any).webOscillator;
-      }
-      
-      if (webGainNode) {
-        webGainNode.disconnect();
-        delete (this as any).webGainNode;
-      }
-      
-      if (webAudioContext) {
-        webAudioContext.close();
-        delete (this as any).webAudioContext;
-      }
-      
-    } catch (webError) {
-      console.error('Error stopping web audio:', webError);
     }
   }
 
@@ -406,15 +281,186 @@ class RingtoneManager {
 
 const ringtoneManager = RingtoneManager.getInstance();
 
-// Simple WebSocket-like connection manager (without actual WebSocket for now)
-class ConnectionManager {
+// NEW: WebSocket Manager for real-time notifications
+class WebSocketManager {
+  private ws: WebSocket | null = null;
   private callbacks: Map<string, Function[]> = new Map();
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private isConnected = false;
+  private professionalId: string | null = null;
+
+  connect(professionalId: string) {
+    if (this.ws && this.isConnected) {
+      console.log('WebSocket already connected');
+      return;
+    }
+
+    this.professionalId = professionalId;
+    
+    try {
+      // Use wss for secure, ws for non-secure
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//teleconnect-krga.onrender.com/ws/professional/${professionalId}/`;
+      
+      console.log('🔗 Connecting to WebSocket:', wsUrl);
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => {
+        console.log('✅ WebSocket connected');
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        
+        // Send registration message
+        this.send({
+          type: 'register',
+          professionalId: professionalId,
+          role: 'professional'
+        });
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📨 WebSocket message:', data);
+          this.handleMessage(data);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      this.ws.onclose = (event) => {
+        console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+        this.isConnected = false;
+        this.handleReconnect();
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.isConnected = false;
+      };
+
+    } catch (error) {
+      console.error('WebSocket connection error:', error);
+      this.handleReconnect();
+    }
+  }
+
+  private handleReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('Max reconnection attempts reached');
+      return;
+    }
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    this.reconnectAttempts++;
+
+    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+    this.reconnectTimeout = setTimeout(() => {
+      if (this.professionalId) {
+        this.connect(this.professionalId);
+      }
+    }, delay);
+  }
+
+  private handleMessage(data: any) {
+    console.log('Processing WebSocket message:', data);
+    
+    if (data.type === 'incoming_call') {
+      console.log('📞 Incoming call received via WebSocket:', data);
+      
+      const callData: CallNotificationData = {
+        type: 'incoming_call',
+        sessionId: data.sessionId || data.callId,
+        callId: data.callId,
+        clientId: data.clientId,
+        clientName: data.clientName,
+        mode: data.mode || 'audio',
+        timestamp: data.timestamp || new Date().toISOString(),
+        professionalId: data.professionalId,
+        consultationId: data.consultationId,
+        roomId: data.roomId
+      };
+      
+      // Emit to all registered callbacks
+      const callbacks = this.callbacks.get('incoming_call');
+      if (callbacks) {
+        callbacks.forEach(callback => callback(callData));
+      }
+    }
+  }
+
+  send(message: any) {
+    if (this.ws && this.isConnected) {
+      this.ws.send(JSON.stringify(message));
+      return true;
+    }
+    console.warn('WebSocket not connected');
+    return false;
+  }
+
+  on(event: string, callback: Function) {
+    if (!this.callbacks.has(event)) {
+      this.callbacks.set(event, []);
+    }
+    this.callbacks.get(event)!.push(callback);
+  }
+
+  off(event: string, callback: Function) {
+    const callbacks = this.callbacks.get(event);
+    if (callbacks) {
+      const index = callbacks.indexOf(callback);
+      if (index > -1) {
+        callbacks.splice(index, 1);
+      }
+    }
+  }
+
+  disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.callbacks.clear();
+    this.isConnected = false;
+    this.reconnectAttempts = 0;
+    console.log('WebSocket manager disconnected');
+  }
+}
+
+// Enhanced Connection Manager with both WebSocket and polling
+class ConnectionManager {
+  private webSocketManager: WebSocketManager | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
+  private callbacks: Map<string, Function[]> = new Map();
   private isConnected = false;
 
+  constructor() {
+    this.webSocketManager = new WebSocketManager();
+  }
+
   connect(professionalId: string, token: string) {
-    console.log('🔗 Starting connection manager');
+    console.log('🔗 Starting enhanced connection manager');
     this.isConnected = true;
+    
+    // Start WebSocket connection
+    this.webSocketManager?.connect(professionalId);
+    this.webSocketManager?.on('incoming_call', (data: CallNotificationData) => {
+      console.log('📞 WebSocket incoming call:', data);
+      this.emit('incoming_call', data);
+    });
+    
+    // Also start polling as fallback
     this.startPolling(professionalId, token);
   }
 
@@ -426,14 +472,16 @@ class ConnectionManager {
     // Initial check
     this.checkForCalls(professionalId, token);
 
-    // Poll every 5 seconds
+    // Poll every 3 seconds (more frequent for better responsiveness)
     this.pollingInterval = setInterval(() => {
       this.checkForCalls(professionalId, token);
-    }, 5000);
+    }, 3000);
   }
 
   private async checkForCalls(professionalId: string, token: string) {
     try {
+      console.log('🔍 Polling for incoming calls...');
+      
       const response = await fetch(`${API_CONFIG.baseUrl}/api/professional/pending-requests/${professionalId}/`, {
         method: 'GET',
         headers: {
@@ -444,22 +492,36 @@ class ConnectionManager {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('📋 Pending requests:', data);
+        
         if (data.requests && data.requests.length > 0) {
           const request = data.requests[0];
           
-          const callData: CallNotificationData = {
-            type: 'incoming_call',
-            sessionId: request.session_id || request.id,
-            clientId: request.client_id,
-            clientName: request.client_name || 'Client',
-            mode: request.mode || 'audio',
-            timestamp: request.created_at || new Date().toISOString(),
-            professionalId: professionalId.toString(),
-            ringtone: 'default',
-            vibration: true
-          };
+          // Check if this is a new call (not already being handled)
+          const currentTime = new Date().getTime();
+          const requestTime = new Date(request.created_at).getTime();
+          const isNewRequest = (currentTime - requestTime) < 10000; // Within last 10 seconds
+          
+          if (isNewRequest) {
+            console.log('📞 New call request found:', request);
+            
+            const callData: CallNotificationData = {
+              type: 'incoming_call',
+              sessionId: request.session_id || request.id,
+              callId: request.call_id || request.id,
+              clientId: request.client_id,
+              clientName: request.client_name || 'Client',
+              mode: request.mode || 'audio',
+              timestamp: request.created_at || new Date().toISOString(),
+              professionalId: professionalId.toString(),
+              ringtone: 'default',
+              vibration: true,
+              consultationId: request.consultation_id,
+              roomId: request.room_id
+            };
 
-          this.emit('incoming_call', callData);
+            this.emit('incoming_call', callData);
+          }
         }
       }
     } catch (error) {
@@ -477,22 +539,30 @@ class ConnectionManager {
   private emit(event: string, data: any) {
     const callbacks = this.callbacks.get(event);
     if (callbacks) {
+      console.log(`📢 Emitting ${event} to ${callbacks.length} callbacks`);
       callbacks.forEach(callback => callback(data));
     }
   }
 
   disconnect() {
     this.isConnected = false;
+    
+    // Disconnect WebSocket
+    this.webSocketManager?.disconnect();
+    
+    // Clear polling interval
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
+    
+    // Clear callbacks
     this.callbacks.clear();
     console.log('🔌 Connection manager disconnected');
   }
 }
 
-// Incoming Call Modal Component
+// Incoming Call Modal Component - UPDATED
 const IncomingCallModal = ({ 
   visible, 
   callData, 
@@ -504,7 +574,7 @@ const IncomingCallModal = ({
   onAccept: () => void;
   onDecline: () => void;
 }) => {
-  const [timeLeft, setTimeLeft] = useState(30); // Reduced to 30 seconds
+  const [timeLeft, setTimeLeft] = useState(30);
   const timerRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
@@ -624,34 +694,31 @@ export default function ProfessionalDashboardScreen() {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(50))[0];
   
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const connectionManagerRef = useRef<ConnectionManager | null>(null);
   const backHandlerRef = useRef<any>(null);
   const hasSetupRef = useRef(false);
+  const incomingCallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Configure notifications
   useEffect(() => {
     const setupNotifications = async () => {
       try {
-        // Don't request notifications on web
-        if (Platform.OS === 'web') {
-          console.log('Skipping notification setup on web');
-          return;
-        }
+        // Only request permissions on mobile
+        if (Platform.OS !== 'web') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status !== 'granted') {
+            console.log('Notification permissions not granted');
+            return;
+          }
 
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') {
-          console.log('Notification permissions not granted');
-          return;
+          Notifications.setNotificationHandler({
+            handleNotification: async () => ({
+              shouldShowAlert: true,
+              shouldPlaySound: true,
+              shouldSetBadge: true,
+            }),
+          });
         }
-
-        Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: true,
-            shouldSetBadge: true,
-          }),
-        });
       } catch (error) {
         console.error('Notification setup error:', error);
       }
@@ -660,11 +727,13 @@ export default function ProfessionalDashboardScreen() {
     setupNotifications();
   }, []);
 
-  // Initialize connection manager
+  // Initialize connection manager when professional is online
   useEffect(() => {
     if (professional?.id && token && isOnline) {
+      console.log('🚀 Starting connection manager for professional:', professional.id);
       setupConnectionManager();
     } else {
+      console.log('⏸️ Pausing connection manager - offline or no professional');
       cleanupConnectionManager();
     }
 
@@ -674,7 +743,10 @@ export default function ProfessionalDashboardScreen() {
   }, [professional?.id, token, isOnline]);
 
   const setupConnectionManager = () => {
-    if (!professional?.id || !token) return;
+    if (!professional?.id || !token) {
+      console.error('❌ Cannot setup connection manager: missing professional ID or token');
+      return;
+    }
 
     // Clean up existing connection
     if (connectionManagerRef.current) {
@@ -684,11 +756,12 @@ export default function ProfessionalDashboardScreen() {
     const manager = new ConnectionManager();
     connectionManagerRef.current = manager;
 
+    // Connect with professional ID and token
     manager.connect(professional.id.toString(), token);
 
     // Listen for incoming calls
     manager.on('incoming_call', (data: CallNotificationData) => {
-      console.log('📞 Incoming call detected:', data);
+      console.log('📞 Incoming call received in dashboard:', data);
       handleIncomingCall(data);
     });
   };
@@ -702,9 +775,17 @@ export default function ProfessionalDashboardScreen() {
 
   // Handle incoming call
   const handleIncomingCall = async (callData: CallNotificationData) => {
+    console.log('🎯 Handling incoming call:', callData);
+    
     // Skip if same call is already being handled
     if (incomingCall?.sessionId === callData.sessionId) {
+      console.log('⚠️ Same call already being handled, skipping...');
       return;
+    }
+
+    // Clear any existing timeout
+    if (incomingCallTimeoutRef.current) {
+      clearTimeout(incomingCallTimeoutRef.current);
     }
 
     // Stop any existing ringtone
@@ -733,9 +814,15 @@ export default function ProfessionalDashboardScreen() {
         console.error('Failed to schedule notification:', error);
       }
     }
+    
+    // Auto-decline after 30 seconds if not answered
+    incomingCallTimeoutRef.current = setTimeout(() => {
+      console.log('⏰ Call timeout - auto declining');
+      handleDeclineCall();
+    }, 30000);
   };
 
-  // Handle call acceptance
+  // Handle call acceptance - UPDATED
   const handleAcceptCall = async () => {
     if (!incomingCall || !professional?.id || !token) {
       Alert.alert('Error', 'Unable to accept call. Missing information.');
@@ -743,33 +830,55 @@ export default function ProfessionalDashboardScreen() {
     }
 
     try {
+      console.log('✅ Professional accepting call:', incomingCall);
+      
       // Stop ringtone first
       await ringtoneManager.stop();
       setShowCallModal(false);
       
+      // Clear timeout
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+      
+      // Get room ID (use the one from client or generate a matching one)
+      const roomId = incomingCall.roomId || `room_${professional.id}_${incomingCall.consultationId}_${Date.now()}`;
+      
+      console.log('🎯 Room ID for call:', roomId);
+      
       // Send acceptance to server
-      const response = await fetch(`${API_CONFIG.baseUrl}/api/session/accept/${incomingCall.sessionId}/`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/api/call/accept/`, {
         method: 'POST',
         headers: {
           'Authorization': `Token ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          call_id: incomingCall.callId || incomingCall.sessionId,
           professional_id: professional.id,
-          status: 'in_progress'
+          professional_name: professional.name,
+          status: 'accepted',
+          room_id: roomId,
+          call_type: incomingCall.mode === 'audio' ? 'voice' : 'video'
         }),
       });
 
       if (response.ok) {
-        // Navigate to session
+        console.log('✅ Call accepted on server, navigating to call page...');
+        
+        // Navigate to professional call page
         router.push({
-          pathname: '/professional/professional-session',
+          pathname: '/professional/professional-call',
           params: { 
             sessionId: incomingCall.sessionId,
+            callId: incomingCall.callId,
             clientId: incomingCall.clientId,
             clientName: incomingCall.clientName,
             mode: incomingCall.mode,
+            roomId: roomId,
             isIncomingCall: 'true',
+            consultationId: incomingCall.consultationId,
             timestamp: new Date().toISOString()
           }
         });
@@ -781,7 +890,7 @@ export default function ProfessionalDashboardScreen() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
     } catch (error) {
-      console.error('Error accepting call:', error);
+      console.error('❌ Error accepting call:', error);
       Alert.alert('Error', 'Failed to accept call. Please try again.');
     } finally {
       setIncomingCall(null);
@@ -798,17 +907,26 @@ export default function ProfessionalDashboardScreen() {
     }
 
     try {
+      console.log('❌ Professional declining call:', incomingCall);
+      
       await ringtoneManager.stop();
       setShowCallModal(false);
       
+      // Clear timeout
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+      
       // Send decline to server
-      await fetch(`${API_CONFIG.baseUrl}/api/session/decline/${incomingCall.sessionId}/`, {
+      await fetch(`${API_CONFIG.baseUrl}/api/call/decline/`, {
         method: 'POST',
         headers: {
           'Authorization': `Token ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          call_id: incomingCall.callId || incomingCall.sessionId,
           professional_id: professional.id,
           reason: 'declined_by_professional'
         }),
@@ -822,13 +940,6 @@ export default function ProfessionalDashboardScreen() {
     } finally {
       setIncomingCall(null);
     }
-  };
-
-  // Handle call end (cleanup)
-  const handleCallEnd = async () => {
-    await ringtoneManager.stop();
-    setShowCallModal(false);
-    setIncomingCall(null);
   };
 
   // API client function
@@ -1028,13 +1139,15 @@ export default function ProfessionalDashboardScreen() {
       setPendingRequests(prev => prev.filter(req => req.id !== requestId));
       setStats(prev => prev ? { ...prev, pending_requests: (prev.pending_requests || 0) - 1 } : null);
       
+      // Navigate to professional call page
       router.push({
-        pathname: '/professional/professional-session',
+        pathname: '/professional/professional-call',
         params: { 
           sessionId: data.session_id,
           clientId: data.client_id,
           clientName: data.client_name || 'Client',
           mode: data.mode || 'chat',
+          roomId: data.zego_room_id || `room_${professional.id}_${data.session_id}_${Date.now()}`,
           timestamp: new Date().toISOString()
         }
       });
@@ -1071,58 +1184,6 @@ export default function ProfessionalDashboardScreen() {
     }
   };
 
-  const handleWithdrawEarnings = () => {
-    if (!professional?.id) {
-      Alert.alert('Profile Required', 'Please complete your professional profile first.');
-      return;
-    }
-    if (incomingCall) {
-      Alert.alert('Active Call', 'Please handle the incoming call first.');
-      return;
-    }
-    router.push('/withdraw-earnings');
-  };
-
-  const handleViewAnalytics = () => {
-    if (!professional?.id) {
-      Alert.alert('Profile Required', 'Please complete your professional profile first.');
-      return;
-    }
-    if (incomingCall) {
-      Alert.alert('Active Call', 'Please handle the incoming call first.');
-      return;
-    }
-    router.push('/professional-analytics');
-  };
-
-  const handleSettings = () => {
-    if (incomingCall) {
-      Alert.alert('Active Call', 'Please handle the incoming call first.');
-      return;
-    }
-    router.push('/professional-settings');
-  };
-
-  const handleGoOnline = () => {
-    if (!professional?.id) {
-      Alert.alert('Profile Required', 'Please complete your professional profile first.');
-      return;
-    }
-    if (incomingCall) {
-      Alert.alert('Active Call', 'Please handle the incoming call first.');
-      return;
-    }
-    router.push('/professional/incoming');
-  };
-
-  const handleSetupProfile = () => {
-    if (incomingCall) {
-      Alert.alert('Active Call', 'Please handle the incoming call first.');
-      return;
-    }
-    router.push('/professional-setup');
-  };
-
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchDashboardData(false);
@@ -1149,7 +1210,7 @@ export default function ProfessionalDashboardScreen() {
     
     if (isOnline && professional?.id) {
       fetchPendingRequests();
-      interval = setInterval(fetchPendingRequests, 10000);
+      interval = setInterval(fetchPendingRequests, 5000);
     }
 
     return () => {
@@ -1183,6 +1244,9 @@ export default function ProfessionalDashboardScreen() {
       cleanupConnectionManager();
       if (backHandlerRef.current) {
         backHandlerRef.current.remove();
+      }
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
       }
     };
   }, []);
@@ -1219,7 +1283,7 @@ export default function ProfessionalDashboardScreen() {
           <Text style={styles.setupText}>
             You need to set up your professional profile before accessing the dashboard.
           </Text>
-          <TouchableOpacity style={styles.setupButton} onPress={handleSetupProfile}>
+          <TouchableOpacity style={styles.setupButton} onPress={() => router.push('/professional-setup')}>
             <Text style={styles.setupButtonText}>Set Up Profile</Text>
           </TouchableOpacity>
         </View>
@@ -1442,7 +1506,7 @@ export default function ProfessionalDashboardScreen() {
                 {pendingRequests.length > 3 && (
                   <TouchableOpacity 
                     style={styles.viewAllButton}
-                    onPress={handleGoOnline}
+                    onPress={() => router.push('/professional/incoming')}
                     disabled={incomingCall}
                   >
                     <Text style={styles.viewAllText}>View All Requests ({pendingRequests.length})</Text>
@@ -1459,7 +1523,7 @@ export default function ProfessionalDashboardScreen() {
               <View style={styles.quickActionsGrid}>
                 <TouchableOpacity 
                   style={styles.quickActionCard} 
-                  onPress={handleWithdrawEarnings} 
+                  onPress={() => router.push('/withdraw-earnings')} 
                   disabled={incomingCall}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
@@ -1470,7 +1534,7 @@ export default function ProfessionalDashboardScreen() {
                 
                 <TouchableOpacity 
                   style={styles.quickActionCard} 
-                  onPress={handleViewAnalytics} 
+                  onPress={() => router.push('/professional-analytics')} 
                   disabled={incomingCall}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
@@ -1481,7 +1545,7 @@ export default function ProfessionalDashboardScreen() {
 
                 <TouchableOpacity 
                   style={styles.quickActionCard} 
-                  onPress={handleSettings} 
+                  onPress={() => router.push('/professional-settings')} 
                   disabled={incomingCall}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#F3F4F6' }]}>

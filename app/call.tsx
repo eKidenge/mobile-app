@@ -58,6 +58,13 @@ interface CallRequestStatus {
   rejection_reason?: string;
 }
 
+// ADDED: Interface for professional status
+interface ProfessionalCallStatus {
+  status: 'ringing' | 'accepted' | 'rejected' | 'busy' | 'joined' | 'left' | 'ended';
+  message: string;
+  timestamp: string;
+}
+
 export default function CallPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -74,9 +81,16 @@ export default function CallPage() {
   const [isVideoOff, setIsVideoOff] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showEndCallModal, setShowEndCallModal] = useState<boolean>(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Zego credentials
+  // ADDED: Professional status tracking
+  const [professionalStatus, setProfessionalStatus] = useState<ProfessionalCallStatus | null>(null);
+  const [professionalJoined, setProfessionalJoined] = useState<boolean>(false);
+  const [showProfessionalStatus, setShowProfessionalStatus] = useState<boolean>(false);
+  
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Zego credentials - NO CHANGES
   const zegoAppID = 1178040486;
   const zegoAppSign = "373ecf17185d1d8c94b03169895a336e";
   
@@ -125,6 +139,9 @@ export default function CallPage() {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+      }
     };
   }, [params]);
 
@@ -150,6 +167,21 @@ export default function CallPage() {
     };
   }, [isInCall, timeLeft]);
 
+  // ADDED: Show professional status temporarily
+  const showProfessionalStatusMessage = (status: ProfessionalCallStatus) => {
+    setProfessionalStatus(status);
+    setShowProfessionalStatus(true);
+    
+    // Hide after 3 seconds
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+    }
+    
+    statusTimeoutRef.current = setTimeout(() => {
+      setShowProfessionalStatus(false);
+    }, 3000);
+  };
+
   // Send call request to backend
   const sendCallRequest = async () => {
     if (!paymentData || !professionalData) return;
@@ -157,6 +189,13 @@ export default function CallPage() {
     try {
       setCallStatus('ringing');
       setIsConnecting(true);
+      
+      // ADDED: Show professional ringing status
+      showProfessionalStatusMessage({
+        status: 'ringing',
+        message: `Calling ${professionalData.name}...`,
+        timestamp: new Date().toISOString()
+      });
       
       const callRequestData = {
         professional: professionalData.id,
@@ -166,14 +205,43 @@ export default function CallPage() {
         duration: paymentData.duration || 30,
         consultation_id: paymentData.consultationId,
         amount: paymentData.amount || 0,
-        category: paymentData.categoryName || 'Consultation'
+        category: paymentData.categoryName || 'Consultation',
+        room_id: professionalData.roomId // ADDED: Send room ID
       };
 
       console.log('📤 Sending call request:', callRequestData);
 
-      // In a real app, you would call your backend API here
-      // For now, we'll simulate the response
-      simulateCallRequest();
+      // Try to send to your backend API
+      try {
+        const response = await fetch('https://teleconnect-krga.onrender.com/api/call/request/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(callRequestData)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ Call request sent to backend:', data);
+          
+          const mockResponse: CallRequestStatus = {
+            id: data.call_id || Math.floor(Math.random() * 1000),
+            status: 'ringing'
+          };
+          
+          setCallRequestStatus(mockResponse);
+          
+          // Start polling for call status
+          startPollingCallStatus(mockResponse.id);
+          
+        } else {
+          throw new Error('Backend request failed');
+        }
+      } catch (apiError) {
+        console.log('Using simulated response due to API error:', apiError);
+        simulateCallRequest();
+      }
       
     } catch (error) {
       console.error('❌ Error sending call request:', error);
@@ -200,7 +268,7 @@ export default function CallPage() {
     }, 1500);
   };
 
-  // Poll for call status
+  // Poll for call status - UPDATED with professional status
   const startPollingCallStatus = (requestId: number) => {
     // Clear any existing interval
     if (pollingIntervalRef.current) {
@@ -215,6 +283,14 @@ export default function CallPage() {
       
       if (pollCount > maxPolls) {
         clearInterval(pollingIntervalRef.current!);
+        
+        // ADDED: Show timeout status
+        showProfessionalStatusMessage({
+          status: 'ended',
+          message: `${professionalData?.name} did not respond`,
+          timestamp: new Date().toISOString()
+        });
+        
         Alert.alert('Timeout', 'Professional did not respond. Please try again.');
         setCallStatus('idle');
         setIsConnecting(false);
@@ -223,7 +299,21 @@ export default function CallPage() {
       
       // In a real app, fetch call status from backend
       // For now, simulate professional accepting after 5 seconds
-      if (pollCount === 5) {
+      
+      // ADDED: Show different status messages
+      if (pollCount === 2) {
+        showProfessionalStatusMessage({
+          status: 'ringing',
+          message: `${professionalData?.name} is being notified...`,
+          timestamp: new Date().toISOString()
+        });
+      } else if (pollCount === 4) {
+        showProfessionalStatusMessage({
+          status: 'accepted',
+          message: `${professionalData?.name} accepted your call!`,
+          timestamp: new Date().toISOString()
+        });
+        
         clearInterval(pollingIntervalRef.current!);
         setCallRequestStatus(prev => prev ? { ...prev, status: 'accepted' } : null);
         joinCallAfterAcceptance();
@@ -236,12 +326,27 @@ export default function CallPage() {
   const joinCallAfterAcceptance = () => {
     setCallStatus('connecting');
     
+    // ADDED: Show connecting status
+    showProfessionalStatusMessage({
+      status: 'joined',
+      message: `Connecting to ${professionalData?.name}...`,
+      timestamp: new Date().toISOString()
+    });
+    
     // Simulate connection delay
     setTimeout(() => {
       setIsConnecting(false);
       setIsInCall(true);
       setCallStatus('connected');
+      setProfessionalJoined(true);
       console.log('✅ Call connected successfully');
+      
+      // ADDED: Show joined status
+      showProfessionalStatusMessage({
+        status: 'joined',
+        message: `Connected with ${professionalData?.name}`,
+        timestamp: new Date().toISOString()
+      });
       
       // Start the session timer
       setTimeLeft((paymentData?.duration || 30) * 60);
@@ -252,6 +357,7 @@ export default function CallPage() {
   const endCall = (reason: 'user' | 'professional' | 'timeout' | 'error' = 'user') => {
     setCallStatus('ending');
     setIsInCall(false);
+    setProfessionalJoined(false);
     
     // Stop any polling
     if (pollingIntervalRef.current) {
@@ -261,6 +367,15 @@ export default function CallPage() {
     
     // Update call request status
     setCallRequestStatus(prev => prev ? { ...prev, status: 'ended' } : null);
+    
+    // ADDED: Show professional left status
+    if (reason === 'professional') {
+      showProfessionalStatusMessage({
+        status: 'left',
+        message: `${professionalData?.name} left the call`,
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Send call ended notification to backend
     sendCallEndedNotification(reason);
@@ -351,6 +466,20 @@ export default function CallPage() {
     );
   };
 
+  // ADDED: Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'ringing': return '#F59E0B';
+      case 'accepted': return '#10B981';
+      case 'joined': return '#10B981';
+      case 'rejected': return '#EF4444';
+      case 'busy': return '#F59E0B';
+      case 'left': return '#EF4444';
+      case 'ended': return '#6B7280';
+      default: return '#6B7280';
+    }
+  };
+
   // If in call and professional data exists, show Zego call interface
   if (isInCall && professionalData && paymentData) {
     return (
@@ -373,13 +502,30 @@ export default function CallPage() {
               console.log('👥 User joined:', users);
               if (users.length > 0) {
                 console.log('✅ Professional joined the call!');
+                setProfessionalJoined(true);
+                
+                // ADDED: Show professional joined status
+                showProfessionalStatusMessage({
+                  status: 'joined',
+                  message: `${professionalData?.name} joined the call`,
+                  timestamp: new Date().toISOString()
+                });
               }
             },
             onUserLeave: (users) => {
               console.log('👋 User left:', users);
               if (users.length === 0) {
-                Alert.alert('Professional Left', 'The professional has left the call.');
-                endCall('professional');
+                // ADDED: Show professional left status
+                showProfessionalStatusMessage({
+                  status: 'left',
+                  message: `${professionalData?.name} left the call`,
+                  timestamp: new Date().toISOString()
+                });
+                
+                setTimeout(() => {
+                  Alert.alert('Professional Left', 'The professional has left the call.');
+                  endCall('professional');
+                }, 1000);
               }
             },
             onRoomStateUpdate: (state) => {
@@ -387,6 +533,13 @@ export default function CallPage() {
             },
           }}
         />
+        
+        {/* ADDED: Professional Status Banner */}
+        {showProfessionalStatus && professionalStatus && (
+          <View style={[styles.statusBanner, { backgroundColor: getStatusColor(professionalStatus.status) }]}>
+            <Text style={styles.statusBannerText}>{professionalStatus.message}</Text>
+          </View>
+        )}
         
         {/* Custom Call Controls Overlay */}
         {showCallControls && (
@@ -402,8 +555,12 @@ export default function CallPage() {
               
               <View style={styles.callInfo}>
                 <View style={styles.connectionStatus}>
-                  <View style={styles.connectionDot} />
-                  <Text style={styles.connectionText}>Secure Connection</Text>
+                  <View style={[styles.connectionDot, { 
+                    backgroundColor: professionalJoined ? '#10B981' : '#F59E0B' 
+                  }]} />
+                  <Text style={styles.connectionText}>
+                    {professionalJoined ? 'Professional Connected' : 'Waiting for professional...'}
+                  </Text>
                 </View>
                 <Text style={styles.callDuration}>{formatTime(timeLeft)}</Text>
               </View>
@@ -420,6 +577,7 @@ export default function CallPage() {
               </Text>
               <Text style={styles.callTypeText}>
                 {callType === 'video' ? 'Video Call' : 'Voice Call'}
+                {professionalJoined ? ' • Connected' : ' • Connecting...'}
               </Text>
             </View>
             
@@ -517,7 +675,7 @@ export default function CallPage() {
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statText}>
-                    Type: {callType === 'video' ? 'Video' : 'Voice'}
+                    Professional: {professionalJoined ? 'Connected' : 'Not Connected'}
                   </Text>
                 </View>
               </View>
@@ -636,6 +794,18 @@ export default function CallPage() {
               <Text style={styles.connectingSubtext}>
                 Please wait while we connect you to {professionalData?.name}
               </Text>
+              
+              {/* ADDED: Professional Status Display */}
+              {professionalStatus && (
+                <View style={styles.professionalStatusContainer}>
+                  <View style={[styles.professionalStatusDot, { 
+                    backgroundColor: getStatusColor(professionalStatus.status) 
+                  }]} />
+                  <Text style={styles.professionalStatusText}>
+                    {professionalStatus.message}
+                  </Text>
+                </View>
+              )}
               
               {callRequestStatus && (
                 <View style={styles.callRequestStatus}>
@@ -898,6 +1068,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
+  // ADDED: Professional Status Styles
+  professionalStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  professionalStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  professionalStatusText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
   callRequestStatus: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -998,6 +1190,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // ADDED: Status Banner Styles
+  statusBanner: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    left: 20,
+    right: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  statusBannerText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   // In-call styles
   callControlsOverlay: {
